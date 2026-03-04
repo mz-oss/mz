@@ -34,8 +34,26 @@ def get_bq_client() -> bigquery.Client:
         local_creds = Path(__file__).resolve().parent.parent / "credentials.json"
         if local_creds.exists():
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(local_creds)
+            return bigquery.Client(project=project_id or None)
 
-    return bigquery.Client(project=project_id or None)
+    if creds_path:
+        return bigquery.Client(project=project_id or None)
+
+    # 인증 정보가 없는 경우 안내 메시지 표시
+    st.error(
+        "BigQuery 인증 정보가 설정되지 않았습니다.\n\n"
+        "**Streamlit Cloud 사용 시:**\n"
+        "1. App settings → Secrets 에 서비스 계정 JSON을 등록하세요.\n"
+        "2. 형식:\n"
+        "```toml\n"
+        "[gcp_service_account]\n"
+        'type = "service_account"\n'
+        'project_id = "elecle-9be54"\n'
+        '# ... credentials.json 의 나머지 필드\n'
+        "```\n\n"
+        "**로컬 실행 시:** 프로젝트 루트에 `credentials.json`을 배치하세요."
+    )
+    st.stop()
 
 
 def _read_query(filename: str) -> str:
