@@ -6,7 +6,7 @@ SELECT
     ROUND(AVG(bike_count_100_avg), 2) AS avg_bike_count,
     ROUND(AVG(accessibility_ratio), 4) AS avg_accessibility,
     ROUND(AVG(conversion_ratio), 4) AS avg_conversion
-FROM `management.weekly_bike_accessibility_by_hex`
+FROM `elecle-9be54.management.weekly_bike_accessibility_by_hex`
 WHERE week >= DATE_SUB(CURRENT_DATE(), INTERVAL 14 DAY)
   AND is_operating = TRUE
   AND h3_area_name IS NOT NULL

@@ -5,6 +5,6 @@ SELECT
     gd.name,
     gd.polygon,
     gd.area_id
-FROM `service.geo_district` AS gd
+FROM `elecle-9be54.service.geo_district` AS gd
 WHERE gd.polygon IS NOT NULL
   AND JSON_EXTRACT(gd.polygon, '$.coordinates') != '[]'

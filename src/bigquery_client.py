@@ -18,7 +18,7 @@ def get_bq_client() -> bigquery.Client:
     2. GOOGLE_APPLICATION_CREDENTIALS 환경변수
     3. credentials.json 파일 (프로젝트 루트)
     """
-    project_id = os.getenv("BQ_PROJECT_ID", "")
+    project_id = os.getenv("BQ_PROJECT_ID", "elecle-9be54")
 
     # 1) Streamlit secrets
     if "gcp_service_account" in st.secrets:
@@ -74,7 +74,7 @@ def fetch_area_list() -> list[str]:
     client = get_bq_client()
     sql = """
     SELECT DISTINCT h3_area_name
-    FROM `management.daily_bike_accessibility_by_district`
+    FROM `elecle-9be54.management.daily_bike_accessibility_by_district`
     WHERE date >= DATE_SUB(CURRENT_DATE(), INTERVAL 14 DAY)
       AND is_operating = TRUE
       AND h3_area_name IS NOT NULL
