@@ -12,8 +12,11 @@ def _gap_to_color(gap: float, max_abs_gap: float) -> list[int]:
 
     빨강 = 배치 필요 (부족), 파랑 = 수거 가능 (과잉)
     """
-    if max_abs_gap == 0:
+    if max_abs_gap == 0 or pd.isna(max_abs_gap):
         return [200, 200, 200, 160]
+
+    if pd.isna(gap):
+        return [200, 200, 200, 100]
 
     ratio = min(abs(gap) / max_abs_gap, 1.0)
     alpha = int(80 + 120 * ratio)
@@ -54,7 +57,11 @@ def create_district_map(
     poly_data = []
     for _, row in merged.iterrows():
         raw_polygon = row.get("polygon")
-        if pd.isna(raw_polygon) or not raw_polygon:
+        try:
+            is_na = pd.isna(raw_polygon)
+        except (TypeError, ValueError):
+            is_na = raw_polygon is None
+        if is_na or not raw_polygon:
             continue
 
         try:
@@ -64,10 +71,21 @@ def create_district_map(
                 continue
             # MultiPolygon → 첫 번째 폴리곤 사용
             polygon_coords = coords[0][0] if geo["type"] == "MultiPolygon" else coords[0]
-        except (json.JSONDecodeError, KeyError, IndexError):
+
+            # 중심 좌표 계산
+            lngs = [c[0] for c in polygon_coords]
+            lats = [c[1] for c in polygon_coords]
+            if not lats or not lngs:
+                continue
+            center_lat = sum(lats) / len(lats)
+            center_lng = sum(lngs) / len(lngs)
+        except (json.JSONDecodeError, KeyError, IndexError, TypeError, ValueError,
+                AttributeError, ZeroDivisionError):
             continue
 
         gap = row.get("gap", 0)
+        if pd.isna(gap):
+            gap = 0
         district_name = row.get("h3_district_name", "")
 
         if highlight_districts is not None:
@@ -77,12 +95,6 @@ def create_district_map(
                 color = [200, 200, 200, 80]  # 회색
         else:
             color = _gap_to_color(gap, max_abs_gap)
-
-        # 중심 좌표 계산
-        lngs = [c[0] for c in polygon_coords]
-        lats = [c[1] for c in polygon_coords]
-        center_lat = sum(lats) / len(lats)
-        center_lng = sum(lngs) / len(lngs)
 
         poly_data.append({
             "polygon": polygon_coords,
