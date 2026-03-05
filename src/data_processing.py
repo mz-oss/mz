@@ -1,7 +1,9 @@
 """적정 대수, 부족/과잉 대수, 우선순위 계산 로직."""
 
+import json
 import math
 
+import h3
 import pandas as pd
 
 DEFAULT_TARGET_RATE = 0.80
@@ -177,6 +179,159 @@ def allocate_bikes(
         target["alloc_priority"] = range(1, len(target) + 1)
 
     return target, adjusted_rate
+
+
+def _parse_zone_location(location) -> tuple[float, float] | None:
+    """Rebalance Zone의 location 필드에서 (lat, lng)를 추출합니다."""
+    if not location:
+        return None
+    try:
+        geo = json.loads(location) if isinstance(location, str) else location
+        if isinstance(geo, dict):
+            geo_type = geo.get("type", "")
+            if geo_type == "Point":
+                lng, lat = geo["coordinates"]
+            elif geo_type in ("Polygon", "MultiPolygon"):
+                coords = geo["coordinates"]
+                if geo_type == "MultiPolygon":
+                    coords = coords[0]
+                flat = coords[0]
+                lng = sum(c[0] for c in flat) / len(flat)
+                lat = sum(c[1] for c in flat) / len(flat)
+            else:
+                return None
+        elif isinstance(geo, list) and len(geo) == 2:
+            lng, lat = float(geo[0]), float(geo[1])
+        else:
+            return None
+        return (lat, lng)
+    except (json.JSONDecodeError, KeyError, IndexError, TypeError, ValueError):
+        return None
+
+
+def select_rebalance_zones(
+    alloc_result: pd.DataFrame,
+    rz_df: pd.DataFrame,
+    hex_demand_df: pd.DataFrame,
+    polygons_df: pd.DataFrame,
+    bikes_per_zone: int = 10,
+) -> pd.DataFrame:
+    """District별 할당 대수에 따라 최적 재배치존을 선정합니다.
+
+    각 재배치존을 hex에 매핑하고, 해당 hex + 인접 hex의 수요량 합계로 점수를 매겨
+    점수가 높은 존부터 선정합니다.
+
+    Args:
+        alloc_result: allocate_bikes 결과 (h3_district_name, allocated 포함)
+        rz_df: Rebalance Zone 원본 데이터 (id, title, location, weight, note)
+        hex_demand_df: hex별 수요량 (h3_index, h3_district_name, estimated_demand)
+        polygons_df: District 폴리곤 데이터
+        bikes_per_zone: 존당 배치 대수 (기본 10)
+
+    Returns:
+        선정 결과 데이터프레임 (district, zone_title, demand_score, allocated, selected)
+    """
+    from src.map_utils import _point_in_polygon
+
+    if alloc_result.empty or rz_df.empty or hex_demand_df.empty:
+        return pd.DataFrame()
+
+    # hex 수요 딕셔너리: {h3_index: demand}
+    hex_demand = dict(
+        zip(hex_demand_df["h3_index"], hex_demand_df["estimated_demand"])
+    )
+
+    # hex 데이터에서 해상도 추출
+    sample_h3 = hex_demand_df["h3_index"].iloc[0]
+    h3_resolution = h3.get_resolution(sample_h3)
+
+    # 할당된 District별 폴리곤 준비
+    alloc_districts = dict(
+        zip(alloc_result["h3_district_name"], alloc_result["allocated"])
+    )
+    district_polygons = {}
+    for _, row in polygons_df.iterrows():
+        name = row.get("name", "")
+        if name not in alloc_districts:
+            continue
+        raw_polygon = row.get("polygon")
+        try:
+            is_na = pd.isna(raw_polygon)
+        except (TypeError, ValueError):
+            is_na = raw_polygon is None
+        if is_na or not raw_polygon:
+            continue
+        try:
+            geo = json.loads(raw_polygon) if isinstance(raw_polygon, str) else raw_polygon
+            coords = geo.get("coordinates", [])
+            if not coords or not coords[0]:
+                continue
+            polygon_coords = coords[0][0] if geo["type"] == "MultiPolygon" else coords[0]
+            district_polygons[name] = polygon_coords
+        except (json.JSONDecodeError, KeyError, IndexError, TypeError, ValueError):
+            continue
+
+    # 각 재배치존의 위치 파싱 + District 매핑 + 수요 점수 계산
+    zone_rows = []
+    for _, rz in rz_df.iterrows():
+        loc = _parse_zone_location(rz.get("location"))
+        if loc is None:
+            continue
+        lat, lng = loc
+
+        # 어느 할당 District에 속하는지 판별
+        matched_district = None
+        for dist_name, poly in district_polygons.items():
+            if _point_in_polygon(lat, lng, poly):
+                matched_district = dist_name
+                break
+        if matched_district is None:
+            continue
+
+        # zone 위치를 hex로 변환 → 해당 hex + 인접 hex의 수요 합산
+        zone_h3 = h3.latlng_to_cell(lat, lng, h3_resolution)
+        neighbors = h3.grid_ring(zone_h3, 1)
+        demand_score = hex_demand.get(zone_h3, 0)
+        for nb in neighbors:
+            demand_score += hex_demand.get(nb, 0)
+
+        zone_rows.append({
+            "h3_district_name": matched_district,
+            "zone_id": rz.get("id", ""),
+            "zone_title": rz.get("title", ""),
+            "note": rz.get("note", ""),
+            "lat": lat,
+            "lng": lng,
+            "demand_score": demand_score,
+        })
+
+    if not zone_rows:
+        return pd.DataFrame()
+
+    zones_df = pd.DataFrame(zone_rows)
+
+    # District별로 수요 점수 순 정렬 → 상위 N개 선정
+    selected_rows = []
+    for district_name, allocated in alloc_districts.items():
+        n_zones = math.ceil(allocated / bikes_per_zone)
+        district_zones = zones_df[zones_df["h3_district_name"] == district_name].copy()
+        district_zones = district_zones.sort_values("demand_score", ascending=False)
+
+        for i, (_, zone) in enumerate(district_zones.iterrows()):
+            row = zone.to_dict()
+            row["selected"] = i < n_zones
+            row["allocated"] = bikes_per_zone if i < n_zones else 0
+            selected_rows.append(row)
+
+    if not selected_rows:
+        return pd.DataFrame()
+
+    result = pd.DataFrame(selected_rows)
+    result = result.sort_values(
+        ["h3_district_name", "selected", "demand_score"],
+        ascending=[True, False, False],
+    )
+    return result
 
 
 def get_summary_kpis(df: pd.DataFrame) -> dict:

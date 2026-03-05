@@ -87,6 +87,14 @@ def fetch_rebalance_zones() -> pd.DataFrame:
 
 
 @st.cache_data(ttl=3600)
+def fetch_hex_demand() -> pd.DataFrame:
+    """Hex 단위 수요량(앱 오픈 로그 × 1.5)을 조회합니다."""
+    client = get_bq_client()
+    sql = _read_query("hex_demand.sql")
+    return client.query(sql).to_dataframe()
+
+
+@st.cache_data(ttl=3600)
 def fetch_area_group_list() -> list[str]:
     """운영 중인 Area Group 목록을 조회합니다."""
     client = get_bq_client()
