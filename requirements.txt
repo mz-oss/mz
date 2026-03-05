@@ -4,4 +4,3 @@ db-dtypes>=1.2.0
 google-auth>=2.25.0
 pandas>=2.1.0
 pydeck>=0.8.0
-h3>=3.7.0

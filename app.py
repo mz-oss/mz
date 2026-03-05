@@ -9,38 +9,26 @@ st.set_page_config(
 )
 
 from src.bigquery_client import (
-    fetch_area_list,
+    fetch_area_group_list,
     fetch_district_polygons,
     fetch_district_stats,
-    fetch_hex_stats,
 )
 from src.data_processing import allocate_bikes, calculate_supply_gap, get_summary_kpis
-from src.map_utils import create_district_map, create_hex_map
+from src.map_utils import create_district_map
 
 # ─── 사이드바 설정 ─────────────────────────────────────────────
 st.sidebar.title("설정")
 
-# Area 선택
-areas = fetch_area_list()
-selected_area = st.sidebar.selectbox(
-    "Area (지역) 선택",
-    options=["전체"] + areas,
+# Area Group 선택
+area_groups = fetch_area_group_list()
+selected_area_group = st.sidebar.selectbox(
+    "Area Group 선택",
+    options=["전체"] + area_groups,
     index=0,
 )
 
-# District / Hex 단위 선택
-view_mode = st.sidebar.radio(
-    "분석 단위", ["District", "Hex"], horizontal=True
-)
-
-# 목표 공급성공률
-target_rate = st.sidebar.slider(
-    "목표 공급성공률 (%)",
-    min_value=50,
-    max_value=100,
-    value=80,
-    step=5,
-) / 100.0
+# 목표 공급성공률 80% 고정
+TARGET_RATE = 0.80
 
 st.sidebar.divider()
 
@@ -60,24 +48,21 @@ run_allocation = st.sidebar.button("할당 계산 실행", type="primary", use_c
 
 # ─── 데이터 로드 ───────────────────────────────────────────────
 st.title("자전거 수거/배치 대시보드")
-st.caption("최근 14일 공급 성공률 기반 | 적정 대수 = 현재 대수 × (목표 성공률 / 현재 성공률)")
+st.caption("최근 14일 공급 성공률 기반 | 목표 공급성공률 80% | 적정 대수 = 현재 대수 × (목표 성공률 / 현재 성공률)")
 
 with st.spinner("BigQuery에서 데이터를 불러오는 중..."):
-    if view_mode == "District":
-        raw_df = fetch_district_stats()
-    else:
-        raw_df = fetch_hex_stats()
+    raw_df = fetch_district_stats()
 
-# Area 필터 적용
-if selected_area != "전체":
-    raw_df = raw_df[raw_df["h3_area_name"] == selected_area]
+# Area Group 필터 적용
+if selected_area_group != "전체":
+    raw_df = raw_df[raw_df["area_group"] == selected_area_group]
 
 if raw_df.empty:
     st.warning("선택한 조건에 해당하는 데이터가 없습니다.")
     st.stop()
 
 # ─── 갭 계산 ──────────────────────────────────────────────────
-df = calculate_supply_gap(raw_df, target_rate=target_rate)
+df = calculate_supply_gap(raw_df, target_rate=TARGET_RATE)
 kpis = get_summary_kpis(df)
 
 # ─── KPI 카드 ─────────────────────────────────────────────────
@@ -102,51 +87,30 @@ col5.metric(
 st.subheader("지역별 공급 현황 지도")
 st.caption("빨강 = 배치 필요 (부족) | 파랑 = 수거 가능 (과잉)")
 
-if view_mode == "Hex":
-    deck = create_hex_map(df)
-else:
-    polygons_df = fetch_district_polygons()
-    deck = create_district_map(df, polygons_df)
+polygons_df = fetch_district_polygons()
+deck = create_district_map(df, polygons_df)
 
 st.pydeck_chart(deck, use_container_width=True)
 
 # ─── 상세 테이블 ──────────────────────────────────────────────
 st.subheader("지역별 상세 데이터")
 
-# 표시용 컬럼 구성
-if view_mode == "District":
-    display_cols = [
-        "priority", "h3_area_name", "h3_district_name",
-        "avg_bike_count", "avg_accessibility", "optimal_bike_count",
-        "gap_int", "status",
-    ]
-    col_labels = {
-        "priority": "우선순위",
-        "h3_area_name": "Area",
-        "h3_district_name": "District",
-        "avg_bike_count": "현재 평균 기기수",
-        "avg_accessibility": "공급성공률",
-        "optimal_bike_count": "적정 기기수",
-        "gap_int": "부족/과잉 대수",
-        "status": "상태",
-    }
-else:
-    display_cols = [
-        "priority", "h3_area_name", "h3_district_name", "h3_index",
-        "avg_bike_count", "avg_accessibility", "optimal_bike_count",
-        "gap_int", "status",
-    ]
-    col_labels = {
-        "priority": "우선순위",
-        "h3_area_name": "Area",
-        "h3_district_name": "District",
-        "h3_index": "H3 Index",
-        "avg_bike_count": "현재 평균 기기수",
-        "avg_accessibility": "공급성공률",
-        "optimal_bike_count": "적정 기기수",
-        "gap_int": "부족/과잉 대수",
-        "status": "상태",
-    }
+display_cols = [
+    "priority", "area_group", "h3_area_name", "h3_district_name",
+    "avg_bike_count", "avg_accessibility", "optimal_bike_count",
+    "gap_int", "status",
+]
+col_labels = {
+    "priority": "우선순위",
+    "area_group": "Area Group",
+    "h3_area_name": "Area",
+    "h3_district_name": "District",
+    "avg_bike_count": "현재 평균 기기수",
+    "avg_accessibility": "공급성공률",
+    "optimal_bike_count": "적정 기기수",
+    "gap_int": "부족/과잉 대수",
+    "status": "상태",
+}
 
 existing_cols = [c for c in display_cols if c in df.columns]
 display_df = df[existing_cols].rename(columns=col_labels)
@@ -165,7 +129,7 @@ csv_data = display_df.to_csv(index=False).encode("utf-8-sig")
 st.download_button(
     label="CSV 다운로드",
     data=csv_data,
-    file_name=f"supply_gap_{view_mode.lower()}.csv",
+    file_name="supply_gap_district.csv",
     mime="text/csv",
 )
 
@@ -188,35 +152,20 @@ if run_allocation and total_bikes_input > 0:
             f"{mode_label} 할당 완료 (잔여: {total_bikes_input - total_allocated}대)"
         )
 
-        if view_mode == "District":
-            alloc_display_cols = [
-                "alloc_priority", "h3_area_name", "h3_district_name",
-                "avg_bike_count", "avg_accessibility", "gap_int", "allocated",
-            ]
-            alloc_labels = {
-                "alloc_priority": "할당 순위",
-                "h3_area_name": "Area",
-                "h3_district_name": "District",
-                "avg_bike_count": "현재 기기수",
-                "avg_accessibility": "공급성공률",
-                "gap_int": f"{'부족' if mode == 'deploy' else '과잉'} 대수",
-                "allocated": f"{mode_label} 할당 대수",
-            }
-        else:
-            alloc_display_cols = [
-                "alloc_priority", "h3_area_name", "h3_district_name", "h3_index",
-                "avg_bike_count", "avg_accessibility", "gap_int", "allocated",
-            ]
-            alloc_labels = {
-                "alloc_priority": "할당 순위",
-                "h3_area_name": "Area",
-                "h3_district_name": "District",
-                "h3_index": "H3 Index",
-                "avg_bike_count": "현재 기기수",
-                "avg_accessibility": "공급성공률",
-                "gap_int": f"{'부족' if mode == 'deploy' else '과잉'} 대수",
-                "allocated": f"{mode_label} 할당 대수",
-            }
+        alloc_display_cols = [
+            "alloc_priority", "area_group", "h3_area_name", "h3_district_name",
+            "avg_bike_count", "avg_accessibility", "gap_int", "allocated",
+        ]
+        alloc_labels = {
+            "alloc_priority": "할당 순위",
+            "area_group": "Area Group",
+            "h3_area_name": "Area",
+            "h3_district_name": "District",
+            "avg_bike_count": "현재 기기수",
+            "avg_accessibility": "공급성공률",
+            "gap_int": f"{'부족' if mode == 'deploy' else '과잉'} 대수",
+            "allocated": f"{mode_label} 할당 대수",
+        }
 
         existing_alloc_cols = [c for c in alloc_display_cols if c in result.columns]
         alloc_df = result[existing_alloc_cols].rename(columns=alloc_labels)
@@ -227,7 +176,7 @@ if run_allocation and total_bikes_input > 0:
         st.download_button(
             label=f"{mode_label} 할당 결과 CSV 다운로드",
             data=alloc_csv,
-            file_name=f"allocation_{mode}_{view_mode.lower()}.csv",
+            file_name=f"allocation_{mode}_district.csv",
             mime="text/csv",
         )
 elif run_allocation and total_bikes_input == 0:

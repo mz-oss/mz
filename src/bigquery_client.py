@@ -70,14 +70,6 @@ def fetch_district_stats() -> pd.DataFrame:
     return client.query(sql).to_dataframe()
 
 
-@st.cache_data(ttl=3600)
-def fetch_hex_stats() -> pd.DataFrame:
-    """Hex 단위 최근 14일 공급 통계를 조회합니다."""
-    client = get_bq_client()
-    sql = _read_query("hex_stats.sql")
-    return client.query(sql).to_dataframe()
-
-
 @st.cache_data(ttl=86400)
 def fetch_district_polygons() -> pd.DataFrame:
     """District 폴리곤 정보를 조회합니다."""
@@ -87,15 +79,15 @@ def fetch_district_polygons() -> pd.DataFrame:
 
 
 @st.cache_data(ttl=3600)
-def fetch_area_list() -> list[str]:
-    """운영 중인 Area 목록을 조회합니다."""
+def fetch_area_group_list() -> list[str]:
+    """운영 중인 Area Group 목록을 조회합니다."""
     client = get_bq_client()
     sql = """
-    SELECT DISTINCT h3_area_name
+    SELECT DISTINCT `elecle-9be54.udf.get_area_group`(h3_area_name) AS area_group
     FROM `elecle-9be54.management.daily_bike_accessibility_by_district`
     WHERE date >= DATE_SUB(CURRENT_DATE(), INTERVAL 14 DAY)
       AND h3_area_name IS NOT NULL
-    ORDER BY h3_area_name
+    ORDER BY area_group
     """
     df = client.query(sql).to_dataframe()
-    return df["h3_area_name"].tolist()
+    return df["area_group"].dropna().tolist()
