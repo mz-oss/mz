@@ -1,4 +1,4 @@
--- District 단위: 최근 14일 공급 성공률 및 배치 기기 평균
+-- District 단위: 최근 14일 공급 성공률 및 배치 기기 평균 (area_group 포함)
 WITH bike AS (
     -- daily_hex_48h: 시간대별 → 일별 평균 → 일간 평균 (2단계 집계), district 기준
     SELECT h3_area_name, h3_district_name, AVG(avg_bike_count) AS avg_bike_count
@@ -33,6 +33,7 @@ accessibility AS (
     GROUP BY h3_area_name, h3_district_name
 )
 SELECT
+    `elecle-9be54.udf.get_area_group`(b.h3_area_name) AS area_group,
     b.h3_area_name,
     b.h3_district_name,
     b.avg_bike_count,
@@ -45,4 +46,4 @@ FROM bike b
 LEFT JOIN accessibility a
   ON b.h3_area_name = a.h3_area_name
   AND b.h3_district_name = a.h3_district_name
-ORDER BY b.h3_area_name, b.h3_district_name
+ORDER BY area_group, b.h3_area_name, b.h3_district_name

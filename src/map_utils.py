@@ -2,7 +2,6 @@
 
 import json
 
-import h3
 import pandas as pd
 import pydeck as pdk
 
@@ -27,76 +26,6 @@ def _gap_to_color(gap: float, max_abs_gap: float) -> list[int]:
         return [int(60 * (1 - ratio)), int(100 * (1 - ratio)), 220, alpha]
     else:
         return [200, 200, 200, 100]
-
-
-def create_hex_map(df: pd.DataFrame) -> pdk.Deck:
-    """H3 헥사곤 기반 지도를 생성합니다."""
-    if df.empty:
-        return _empty_map()
-
-    max_abs_gap = df["gap"].abs().max() if "gap" in df.columns else 1
-
-    hex_data = []
-    for _, row in df.iterrows():
-        h3_index = row.get("h3_index", "")
-        if not h3_index or not h3.h3_is_valid(h3_index):
-            continue
-        boundary = h3.h3_to_geo_boundary(h3_index, geo_json=True)
-        lat, lng = h3.h3_to_geo(h3_index)
-        gap = row.get("gap", 0)
-        color = _gap_to_color(gap, max_abs_gap)
-
-        hex_data.append({
-            "polygon": [list(coord) for coord in boundary],
-            "h3_index": h3_index,
-            "district": row.get("h3_district_name", ""),
-            "bike_count": row.get("avg_bike_count", 0),
-            "accessibility": row.get("avg_accessibility", 0),
-            "gap": gap,
-            "status": row.get("status", ""),
-            "color": color,
-            "lat": lat,
-            "lng": lng,
-        })
-
-    if not hex_data:
-        return _empty_map()
-
-    avg_lat = sum(d["lat"] for d in hex_data) / len(hex_data)
-    avg_lng = sum(d["lng"] for d in hex_data) / len(hex_data)
-
-    layer = pdk.Layer(
-        "PolygonLayer",
-        data=hex_data,
-        get_polygon="polygon",
-        get_fill_color="color",
-        get_line_color=[50, 50, 50, 100],
-        line_width_min_pixels=1,
-        pickable=True,
-        auto_highlight=True,
-    )
-
-    view_state = pdk.ViewState(
-        latitude=avg_lat,
-        longitude=avg_lng,
-        zoom=12,
-        pitch=0,
-    )
-
-    return pdk.Deck(
-        layers=[layer],
-        initial_view_state=view_state,
-        tooltip={
-            "html": (
-                "<b>{district}</b><br/>"
-                "H3: {h3_index}<br/>"
-                "배치 기기: {bike_count}대<br/>"
-                "공급성공률: {accessibility:.1%}<br/>"
-                "부족/과잉: <b>{gap}대</b> ({status})"
-            ),
-            "style": {"backgroundColor": "#333", "color": "white"},
-        },
-    )
 
 
 def create_district_map(
