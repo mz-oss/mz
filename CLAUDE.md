@@ -25,7 +25,7 @@ mz/
 │   └── map_utils.py           # pydeck 기반 지도 시각화 (Hex, District)
 └── queries/
     ├── district_stats.sql     # District 단위 14일 통계
-    ├── hex_stats.sql          # Hex 단위 14일 통계
+    ├── hex_stats.sql          # Hex 단위 7일 통계 (기기수: daily_hex_48h, 공급성공률: weekly_bike_accessibility_by_hex)
     └── district_polygons.sql  # District 폴리곤 조회
 ```
 
@@ -42,13 +42,14 @@ mz/
 | 테이블 | 용도 |
 |--------|------|
 | `management.daily_bike_accessibility_by_district` | District 일별 공급성공률/배치기기수 |
-| `management.weekly_bike_accessibility_by_hex` | Hex 주별 공급성공률/배치기기수 |
+| `management.daily_hex_48h` | Hex 시간대별 기기수 (bike_cnt) — 평균 기기수 산출용 |
+| `management.weekly_bike_accessibility_by_hex` | Hex 주별 공급성공률/전환율 |
 | `service.geo_district` | District 경계 폴리곤 (GeoJSON) |
 | `service.geo_district_h3` | District↔H3 매핑 |
 | `management.business_riding` | 라이딩 원시 데이터 (참조용) |
 
 ### 주요 컬럼
-- `bike_count_100_avg`: 반경 100m 내 평균 자전거 수 → **배치 기기 대수로 사용**
+- `bike_cnt` (daily_hex_48h): 시간대별 기기수 → **일별 평균 → 일간 평균 2단계 집계로 배치 기기 대수 산출**
 - `accessibility_ratio`: 공급 성공률
 - `total_log_cnt`: 앱 오픈 로그 수 (안드로이드만, ×1.5 보정 필요)
 
