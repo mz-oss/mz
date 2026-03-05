@@ -128,13 +128,16 @@ else:
 # ─── 2. 지도 (배치/수거 할당 결과 + Rebalance Zone) ──────────
 st.divider()
 st.subheader(f"{mode_label} 대상 지역 지도")
-st.caption(
-    f"빨간색 = {mode_label} 할당 지역 (할당 대수 표시) | "
-    f"회색 = 기타 지역 | 주황색 원 = Rebalance Zone"
-)
+if mode == "deploy":
+    st.caption(
+        f"빨간색 = {mode_label} 할당 지역 (할당 대수 표시) | "
+        f"회색 = 기타 지역 | 파란색 마커 = Rebalance Zone"
+    )
+else:
+    st.caption(f"빨간색 = {mode_label} 할당 지역 (할당 대수 표시) | 회색 = 기타 지역")
 
 polygons_df = fetch_district_polygons()
-rebalance_zones_df = fetch_rebalance_zones()
+rebalance_zones_df = fetch_rebalance_zones() if mode == "deploy" else None
 deck = create_allocation_map(
     df, polygons_df, result,
     rebalance_zones_df=rebalance_zones_df,
