@@ -142,6 +142,10 @@ def allocate_bikes(
         target = gap_df[gap_df["gap_int"] < 0].copy()
         target["gap"] = target["gap"].abs()
         target["gap_int"] = target["gap_int"].abs()
+        # 수거 시 현재 기기수를 초과하지 않도록 cap
+        if "current_bike_count" in target.columns:
+            current_cap = target["current_bike_count"].round(0).astype(int).clip(lower=0)
+            target["gap_int"] = target["gap_int"].clip(upper=current_cap)
         target = target.sort_values("gap", ascending=False)
 
     remaining = total_bikes

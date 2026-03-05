@@ -64,7 +64,7 @@ def _read_query(filename: str) -> str:
 
 @st.cache_data(ttl=3600)
 def fetch_district_stats() -> pd.DataFrame:
-    """District 단위 최근 14일 공급 통계를 조회합니다."""
+    """District 단위 최근 7일 공급 통계를 조회합니다."""
     client = get_bq_client()
     sql = _read_query("district_stats.sql")
     return client.query(sql).to_dataframe()
@@ -85,7 +85,7 @@ def fetch_area_group_list() -> list[str]:
     sql = """
     SELECT DISTINCT `elecle-9be54.udf.get_area_group`(h3_area_name) AS area_group
     FROM `elecle-9be54.management.daily_bike_accessibility_by_district`
-    WHERE date >= DATE_SUB(CURRENT_DATE(), INTERVAL 14 DAY)
+    WHERE date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
       AND h3_area_name IS NOT NULL
     ORDER BY area_group
     """
