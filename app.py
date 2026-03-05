@@ -12,9 +12,10 @@ from src.bigquery_client import (
     fetch_area_group_list,
     fetch_district_polygons,
     fetch_district_stats,
+    fetch_rebalance_zones,
 )
 from src.data_processing import allocate_bikes, calculate_supply_gap, get_summary_kpis
-from src.map_utils import create_district_map
+from src.map_utils import create_allocation_map, create_district_map
 
 # ─── 상단 설정 ─────────────────────────────────────────────
 st.title("자전거 수거/배치 대시보드")
@@ -124,18 +125,21 @@ else:
         mime="text/csv",
     )
 
-# ─── 2. 지도 (배치/수거 대상 District만 빨간색) ──────────────
+# ─── 2. 지도 (배치/수거 할당 결과 + Rebalance Zone) ──────────
 st.divider()
 st.subheader(f"{mode_label} 대상 지역 지도")
-st.caption(f"빨간색 = {mode_label} 대상 지역 | 회색 = 기타 지역")
-
-# 할당된 district 목록 추출
-highlight_districts = set()
-if not result.empty and "h3_district_name" in result.columns:
-    highlight_districts = set(result["h3_district_name"].tolist())
+st.caption(
+    f"빨간색 = {mode_label} 할당 지역 (할당 대수 표시) | "
+    f"회색 = 기타 지역 | 주황색 원 = Rebalance Zone"
+)
 
 polygons_df = fetch_district_polygons()
-deck = create_district_map(df, polygons_df, highlight_districts=highlight_districts)
+rebalance_zones_df = fetch_rebalance_zones()
+deck = create_allocation_map(
+    df, polygons_df, result,
+    rebalance_zones_df=rebalance_zones_df,
+    mode=mode,
+)
 st.pydeck_chart(deck, use_container_width=True)
 
 # ─── 3. 전체 지역 상세 데이터 (마지막) ───────────────────────
