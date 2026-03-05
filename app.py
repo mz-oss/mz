@@ -223,62 +223,61 @@ if selected_zones_df is not None and not selected_zones_df.empty:
 
 # ─── 4. 전체 지역 상세 데이터 (마지막) ───────────────────────
 st.divider()
-st.subheader("전체 지역 상세 데이터")
+with st.expander("전체 지역 상세 데이터", expanded=False):
+    kpis = get_summary_kpis(df)
+    kpi_r1c1, kpi_r1c2, kpi_r1c3 = st.columns(3)
+    kpi_r1c1.metric("평균 공급성공률", f"{kpis['avg_accessibility']:.1%}")
+    kpi_r1c2.metric("총 배치 기기 수", f"{kpis['total_bike_count']:,.0f}대")
+    kpi_r1c3.metric("분석 지역 수", f"{kpis['total_areas']}개")
 
-kpis = get_summary_kpis(df)
-kpi_r1c1, kpi_r1c2, kpi_r1c3 = st.columns(3)
-kpi_r1c1.metric("평균 공급성공률", f"{kpis['avg_accessibility']:.1%}")
-kpi_r1c2.metric("총 배치 기기 수", f"{kpis['total_bike_count']:,.0f}대")
-kpi_r1c3.metric("분석 지역 수", f"{kpis['total_areas']}개")
+    kpi_r2c1, kpi_r2c2 = st.columns(2)
+    kpi_r2c1.metric(
+        "목표 미달 지역",
+        f"{kpis['areas_below_target']}개",
+        delta=f"-{kpis['total_deploy_needed']}대 부족",
+        delta_color="inverse",
+    )
+    kpi_r2c2.metric(
+        "목표 초과 지역",
+        f"{kpis['areas_above_target']}개",
+        delta=f"+{kpis['total_collect_possible']}대 과잉",
+        delta_color="inverse",
+    )
 
-kpi_r2c1, kpi_r2c2 = st.columns(2)
-kpi_r2c1.metric(
-    "목표 미달 지역",
-    f"{kpis['areas_below_target']}개",
-    delta=f"-{kpis['total_deploy_needed']}대 부족",
-    delta_color="inverse",
-)
-kpi_r2c2.metric(
-    "목표 초과 지역",
-    f"{kpis['areas_above_target']}개",
-    delta=f"+{kpis['total_collect_possible']}대 과잉",
-    delta_color="inverse",
-)
+    display_cols = [
+        "priority", "area_group", "h3_area_name", "h3_district_name",
+        "avg_bike_count", "current_bike_count", "avg_accessibility", "optimal_bike_count",
+        "gap_int", "status",
+    ]
+    col_labels = {
+        "priority": "우선순위",
+        "area_group": "Area Group",
+        "h3_area_name": "Area",
+        "h3_district_name": "District",
+        "avg_bike_count": "평균 기기수(7일)",
+        "current_bike_count": "현재 기기수",
+        "avg_accessibility": "공급성공률",
+        "optimal_bike_count": "적정 기기수",
+        "gap_int": "부족/과잉 대수",
+        "status": "상태",
+    }
 
-display_cols = [
-    "priority", "area_group", "h3_area_name", "h3_district_name",
-    "avg_bike_count", "current_bike_count", "avg_accessibility", "optimal_bike_count",
-    "gap_int", "status",
-]
-col_labels = {
-    "priority": "우선순위",
-    "area_group": "Area Group",
-    "h3_area_name": "Area",
-    "h3_district_name": "District",
-    "avg_bike_count": "평균 기기수(7일)",
-    "current_bike_count": "현재 기기수",
-    "avg_accessibility": "공급성공률",
-    "optimal_bike_count": "적정 기기수",
-    "gap_int": "부족/과잉 대수",
-    "status": "상태",
-}
+    existing_cols = [c for c in display_cols if c in df.columns]
+    display_df = df[existing_cols].rename(columns=col_labels)
 
-existing_cols = [c for c in display_cols if c in df.columns]
-display_df = df[existing_cols].rename(columns=col_labels)
+    st.dataframe(
+        display_df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "공급성공률": st.column_config.NumberColumn(format="%.1%%"),
+        },
+    )
 
-st.dataframe(
-    display_df,
-    use_container_width=True,
-    hide_index=True,
-    column_config={
-        "공급성공률": st.column_config.NumberColumn(format="%.1%%"),
-    },
-)
-
-csv_data = display_df.to_csv(index=False).encode("utf-8-sig")
-st.download_button(
-    label="전체 데이터 CSV 다운로드",
-    data=csv_data,
-    file_name="supply_gap_district.csv",
-    mime="text/csv",
-)
+    csv_data = display_df.to_csv(index=False).encode("utf-8-sig")
+    st.download_button(
+        label="전체 데이터 CSV 다운로드",
+        data=csv_data,
+        file_name="supply_gap_district.csv",
+        mime="text/csv",
+    )
