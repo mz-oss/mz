@@ -79,6 +79,14 @@ def fetch_district_polygons() -> pd.DataFrame:
 
 
 @st.cache_data(ttl=3600)
+def fetch_rebalance_zones() -> pd.DataFrame:
+    """Rebalance Zone 정보를 조회합니다."""
+    client = get_bq_client()
+    sql = _read_query("rebalance_zones.sql")
+    return client.query(sql).to_dataframe()
+
+
+@st.cache_data(ttl=3600)
 def fetch_area_group_list() -> list[str]:
     """운영 중인 Area Group 목록을 조회합니다."""
     client = get_bq_client()
