@@ -77,7 +77,10 @@ mode_label = "배치" if mode == "deploy" else "수거"
 # ─── 1. 배치/수거 할당 결과 (최우선 노출) ─────────────────────
 st.subheader(f"{mode_label} 할당 결과")
 
-result = allocate_bikes(df, total_bikes_input, mode=mode)
+result, adjusted_rate = allocate_bikes(
+    df, total_bikes_input, mode=mode,
+    raw_df=raw_df, initial_target_rate=TARGET_RATE,
+)
 
 if result.empty:
     st.info(f"{mode_label}이 필요한 지역이 없습니다.")
@@ -87,6 +90,11 @@ else:
         f"총 {total_bikes_input}대 중 **{total_allocated}대** "
         f"{mode_label} 할당 완료 (잔여: {total_bikes_input - total_allocated}대)"
     )
+    if adjusted_rate != TARGET_RATE:
+        st.info(
+            f"잔여 0 달성을 위해 목표 공급성공률을 "
+            f"{TARGET_RATE:.0%} → **{adjusted_rate:.0%}**로 자동 조정했습니다."
+        )
 
     alloc_display_cols = [
         "alloc_priority", "area_group", "h3_area_name", "h3_district_name",
