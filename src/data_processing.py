@@ -310,6 +310,10 @@ def select_rebalance_zones(
 
     zones_df = pd.DataFrame(zone_rows)
 
+    # 동일 이름 재배치존 중복 제거 (수요 점수 높은 것 유지)
+    zones_df = zones_df.sort_values("demand_score", ascending=False)
+    zones_df = zones_df.drop_duplicates(subset=["zone_title"], keep="first")
+
     # District별로 수요 점수 순 정렬 → 상위 N개 선정
     selected_rows = []
     for district_name, allocated in alloc_districts.items():
