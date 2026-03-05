@@ -287,20 +287,28 @@ def create_allocation_map(
             background_padding=[4, 2],
         ))
 
-    # Rebalance Zone 레이어
+    # Rebalance Zone 레이어 (파란색 마커)
     if rebalance_zones_df is not None and not rebalance_zones_df.empty:
         rz_data = _parse_rebalance_zones(rebalance_zones_df)
         if rz_data:
+            icon_data = {
+                "url": "https://raw.githubusercontent.com/visgl/deck.gl-data/master/website/icon-atlas.png",
+                "width": 128,
+                "height": 128,
+                "anchorY": 128,
+                "mask": True,
+            }
+            for d in rz_data:
+                d["icon_data"] = icon_data
             layers.append(pdk.Layer(
-                "ScatterplotLayer",
+                "IconLayer",
                 data=rz_data,
+                get_icon="icon_data",
                 get_position=["lng", "lat"],
-                get_radius=200,
-                get_fill_color=[255, 165, 0, 120],  # 주황색 반투명
-                get_line_color=[255, 140, 0, 220],
-                line_width_min_pixels=2,
-                stroked=True,
+                get_size=40,
+                get_color=[30, 100, 230, 220],  # 파란색
                 pickable=True,
+                size_scale=1,
             ))
 
     mode_label = "배치" if mode == "deploy" else "수거"
