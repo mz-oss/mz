@@ -40,8 +40,8 @@ from src.map_utils import create_allocation_map, create_district_map
 st.title("수거/배치 대시보드")
 with st.expander("계산 방식 안내", expanded=False):
     st.caption(
-        "최근 14일 공급 성공률 기반 | 목표 공급성공률 80% | "
-        "적정 대수 = 현재 대수 × (목표 성공률 / 현재 성공률)"
+        "최근 7일 공급 성공률 기반 | 목표 공급성공률 80% | "
+        "적정 대수 = 평균 기기수 × (목표 성공률 / 현재 성공률)"
     )
 
 TARGET_RATE = 0.80
@@ -122,14 +122,15 @@ else:
 
     alloc_display_cols = [
         "alloc_priority", "h3_district_name", "allocated", "gap_int",
-        "avg_bike_count", "avg_accessibility", "h3_area_name", "area_group",
+        "avg_bike_count", "current_bike_count", "avg_accessibility", "h3_area_name", "area_group",
     ]
     alloc_labels = {
         "alloc_priority": "할당 순위",
         "area_group": "Area Group",
         "h3_area_name": "Area",
         "h3_district_name": "District",
-        "avg_bike_count": "현재 기기수",
+        "avg_bike_count": "평균 기기수(7일)",
+        "current_bike_count": "현재 기기수",
         "avg_accessibility": "공급성공률",
         "gap_int": f"{'부족' if mode == 'deploy' else '과잉'} 대수",
         "allocated": f"{mode_label} 할당 대수",
@@ -151,13 +152,16 @@ else:
 # ─── 2. 지도 (배치/수거 할당 결과 + Rebalance Zone) ──────────
 st.divider()
 st.subheader(f"{mode_label} 대상 지역 지도")
-st.caption(
-    f"빨간색 = {mode_label} 할당 지역 (할당 대수 표시) | "
-    f"회색 = 기타 지역 | 주황색 원 = Rebalance Zone"
-)
+if mode == "deploy":
+    st.caption(
+        f"빨간색 = {mode_label} 할당 지역 (할당 대수 표시) | "
+        f"회색 = 기타 지역 | 파란색 마커 = Rebalance Zone"
+    )
+else:
+    st.caption(f"빨간색 = {mode_label} 할당 지역 (할당 대수 표시) | 회색 = 기타 지역")
 
 polygons_df = fetch_district_polygons()
-rebalance_zones_df = fetch_rebalance_zones()
+rebalance_zones_df = fetch_rebalance_zones() if mode == "deploy" else None
 deck = create_allocation_map(
     df, polygons_df, result,
     rebalance_zones_df=rebalance_zones_df,
@@ -191,7 +195,7 @@ kpi_r2c2.metric(
 
 display_cols = [
     "priority", "area_group", "h3_area_name", "h3_district_name",
-    "avg_bike_count", "avg_accessibility", "optimal_bike_count",
+    "avg_bike_count", "current_bike_count", "avg_accessibility", "optimal_bike_count",
     "gap_int", "status",
 ]
 col_labels = {
@@ -199,7 +203,8 @@ col_labels = {
     "area_group": "Area Group",
     "h3_area_name": "Area",
     "h3_district_name": "District",
-    "avg_bike_count": "현재 평균 기기수",
+    "avg_bike_count": "평균 기기수(7일)",
+    "current_bike_count": "현재 기기수",
     "avg_accessibility": "공급성공률",
     "optimal_bike_count": "적정 기기수",
     "gap_int": "부족/과잉 대수",
