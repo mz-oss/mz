@@ -158,13 +158,22 @@ def allocate_bikes(
         allocated.append(assign)
         remaining -= assign
 
-    # 목표성공률 최대까지 올렸는데도 잔여가 남으면 마지막 할당 지역에 추가
+    # 목표성공률 한계까지 조정해도 잔여가 남는 극단 케이스 처리
     if remaining > 0 and any(a > 0 for a in allocated):
-        for i in range(len(allocated) - 1, -1, -1):
-            if allocated[i] > 0:
-                allocated[i] += remaining
-                remaining = 0
-                break
+        if mode == "deploy":
+            # 배치: 최초(1순위) 할당 지역에 추가 (효과 극대화)
+            for i in range(len(allocated)):
+                if allocated[i] > 0:
+                    allocated[i] += remaining
+                    remaining = 0
+                    break
+        else:
+            # 수거: 마지막 할당 지역에 추가
+            for i in range(len(allocated) - 1, -1, -1):
+                if allocated[i] > 0:
+                    allocated[i] += remaining
+                    remaining = 0
+                    break
 
     target["allocated"] = allocated
     target = target[target["allocated"] > 0]
