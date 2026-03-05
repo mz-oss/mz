@@ -161,6 +161,12 @@ else:
                 parts.append(f"잔여{remainder}대 자율배치 필요")
             zone_texts[dist_name] = " / ".join(parts)
 
+        # 선정 존이 없는 District도 잔여 자율배치 표시
+        for _, row in alloc_with_zones.iterrows():
+            dn = row["h3_district_name"]
+            if dn not in zone_texts:
+                zone_texts[dn] = f"잔여{int(row['allocated'])}대 자율배치 필요"
+
         alloc_with_zones["재배치존"] = alloc_with_zones["h3_district_name"].map(zone_texts).fillna("")
 
     # 핵심 정보: District / 할당 대수 / 재배치존
