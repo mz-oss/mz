@@ -30,7 +30,8 @@ def calculate_supply_gap(
     result = df.copy()
 
     # 공급성공률이 0이거나 NULL인 경우 처리 (NaN → 1.0 = 100%)
-    safe_accessibility = result[accessibility_col].fillna(1.0).clip(lower=0.01)
+    result[accessibility_col] = result[accessibility_col].fillna(1.0)
+    safe_accessibility = result[accessibility_col].clip(lower=0.01)
 
     result["optimal_bike_count"] = (
         result[bike_col] * (target_rate / safe_accessibility)
