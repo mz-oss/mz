@@ -8,6 +8,25 @@ st.set_page_config(
     layout="wide",
 )
 
+# ─── 모바일 반응형 CSS ────────────────────────────────────────
+st.markdown(
+    """
+    <style>
+    @media (max-width: 768px) {
+        [data-testid="stHorizontalBlock"] { flex-wrap: wrap; }
+        [data-testid="stHorizontalBlock"] > div {
+            flex: 1 1 100% !important;
+            min-width: 100% !important;
+        }
+        [data-testid="stMetric"] { padding: 0.5rem 0; }
+        [data-testid="stRadio"] > div { flex-direction: column !important; }
+        [data-testid="stDataFrame"] { font-size: 0.8rem; }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 from src.bigquery_client import (
     fetch_area_group_list,
     fetch_district_polygons,
@@ -18,8 +37,12 @@ from src.data_processing import allocate_bikes, calculate_supply_gap, get_summar
 from src.map_utils import create_allocation_map, create_district_map
 
 # ─── 상단 설정 ─────────────────────────────────────────────
-st.title("자전거 수거/배치 대시보드")
-st.caption("최근 14일 공급 성공률 기반 | 목표 공급성공률 80% | 적정 대수 = 현재 대수 × (목표 성공률 / 현재 성공률)")
+st.title("수거/배치 대시보드")
+with st.expander("계산 방식 안내", expanded=False):
+    st.caption(
+        "최근 14일 공급 성공률 기반 | 목표 공급성공률 80% | "
+        "적정 대수 = 현재 대수 × (목표 성공률 / 현재 성공률)"
+    )
 
 TARGET_RATE = 0.80
 
@@ -98,8 +121,8 @@ else:
         )
 
     alloc_display_cols = [
-        "alloc_priority", "area_group", "h3_area_name", "h3_district_name",
-        "avg_bike_count", "avg_accessibility", "gap_int", "allocated",
+        "alloc_priority", "h3_district_name", "allocated", "gap_int",
+        "avg_bike_count", "avg_accessibility", "h3_area_name", "area_group",
     ]
     alloc_labels = {
         "alloc_priority": "할당 순위",
@@ -140,24 +163,26 @@ deck = create_allocation_map(
     rebalance_zones_df=rebalance_zones_df,
     mode=mode,
 )
-st.pydeck_chart(deck, use_container_width=True)
+st.pydeck_chart(deck, use_container_width=True, height=500)
 
 # ─── 3. 전체 지역 상세 데이터 (마지막) ───────────────────────
 st.divider()
 st.subheader("전체 지역 상세 데이터")
 
 kpis = get_summary_kpis(df)
-col1, col2, col3, col4, col5 = st.columns(5)
-col1.metric("평균 공급성공률", f"{kpis['avg_accessibility']:.1%}")
-col2.metric("총 배치 기기 수", f"{kpis['total_bike_count']:,.0f}대")
-col3.metric("분석 지역 수", f"{kpis['total_areas']}개")
-col4.metric(
+kpi_r1c1, kpi_r1c2, kpi_r1c3 = st.columns(3)
+kpi_r1c1.metric("평균 공급성공률", f"{kpis['avg_accessibility']:.1%}")
+kpi_r1c2.metric("총 배치 기기 수", f"{kpis['total_bike_count']:,.0f}대")
+kpi_r1c3.metric("분석 지역 수", f"{kpis['total_areas']}개")
+
+kpi_r2c1, kpi_r2c2 = st.columns(2)
+kpi_r2c1.metric(
     "목표 미달 지역",
     f"{kpis['areas_below_target']}개",
     delta=f"-{kpis['total_deploy_needed']}대 부족",
     delta_color="inverse",
 )
-col5.metric(
+kpi_r2c2.metric(
     "목표 초과 지역",
     f"{kpis['areas_above_target']}개",
     delta=f"+{kpis['total_collect_possible']}대 과잉",
