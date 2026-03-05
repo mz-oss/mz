@@ -287,9 +287,26 @@ def create_allocation_map(
             background_padding=[4, 2],
         ))
 
-    # Rebalance Zone 레이어 (파란색 마커)
+    # Rebalance Zone 레이어 (파란색 마커) — 할당된 District 내 위치하는 것만 표시
     if rebalance_zones_df is not None and not rebalance_zones_df.empty:
         rz_data = _parse_rebalance_zones(rebalance_zones_df)
+        if rz_data:
+            # 할당된 District 폴리곤 수집
+            alloc_polygons = [
+                d["polygon"] for d in poly_data if d["allocated"] > 0
+            ]
+            # 할당 District 내에 위치하는 Rebalance Zone만 필터링
+            if alloc_polygons:
+                rz_data = [
+                    rz for rz in rz_data
+                    if any(
+                        _point_in_polygon(rz["lat"], rz["lng"], poly)
+                        for poly in alloc_polygons
+                    )
+                ]
+            else:
+                rz_data = []
+
         if rz_data:
             icon_data = {
                 "url": "https://raw.githubusercontent.com/visgl/deck.gl-data/master/website/icon-atlas.png",
@@ -333,6 +350,20 @@ def create_allocation_map(
             "style": {"backgroundColor": "#333", "color": "white"},
         },
     )
+
+
+def _point_in_polygon(lat: float, lng: float, polygon: list[list[float]]) -> bool:
+    """Ray-casting 알고리즘으로 점이 폴리곤 내부에 있는지 판별합니다."""
+    n = len(polygon)
+    inside = False
+    j = n - 1
+    for i in range(n):
+        xi, yi = polygon[i][0], polygon[i][1]  # lng, lat
+        xj, yj = polygon[j][0], polygon[j][1]
+        if ((yi > lat) != (yj > lat)) and (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi):
+            inside = not inside
+        j = i
+    return inside
 
 
 def _parse_rebalance_zones(rz_df: pd.DataFrame) -> list[dict]:
