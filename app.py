@@ -12,9 +12,15 @@ from src.bigquery_client import (
     fetch_area_group_list,
     fetch_district_polygons,
     fetch_district_stats,
+    fetch_hex_demand,
     fetch_rebalance_zones,
 )
-from src.data_processing import allocate_bikes, calculate_supply_gap, get_summary_kpis
+from src.data_processing import (
+    allocate_bikes,
+    calculate_supply_gap,
+    get_summary_kpis,
+    select_rebalance_zones,
+)
 from src.map_utils import create_allocation_map, create_district_map
 
 # ─── 상단 설정 ─────────────────────────────────────────────
@@ -125,27 +131,73 @@ else:
         mime="text/csv",
     )
 
-# ─── 2. 지도 (배치/수거 할당 결과 + Rebalance Zone) ──────────
+# ─── 2. 재배치존 선정 + 지도 ─────────────────────────────────
 st.divider()
 st.subheader(f"{mode_label} 대상 지역 지도")
+
+polygons_df = fetch_district_polygons()
+rebalance_zones_df = fetch_rebalance_zones() if mode == "deploy" else None
+selected_zones_df = None
+
+if mode == "deploy" and not result.empty and rebalance_zones_df is not None:
+    hex_demand_df = fetch_hex_demand()
+    if not hex_demand_df.empty:
+        selected_zones_df = select_rebalance_zones(
+            result, rebalance_zones_df, hex_demand_df, polygons_df,
+        )
+
 if mode == "deploy":
     st.caption(
         f"빨간색 = {mode_label} 할당 지역 (할당 대수 표시) | "
-        f"회색 = 기타 지역 | 파란색 마커 = Rebalance Zone"
+        f"회색 = 기타 지역 | 파란색 마커 = 선정 Zone | 회색 마커 = 미선정 Zone"
     )
 else:
     st.caption(f"빨간색 = {mode_label} 할당 지역 (할당 대수 표시) | 회색 = 기타 지역")
 
-polygons_df = fetch_district_polygons()
-rebalance_zones_df = fetch_rebalance_zones() if mode == "deploy" else None
 deck = create_allocation_map(
     df, polygons_df, result,
     rebalance_zones_df=rebalance_zones_df,
+    selected_zones_df=selected_zones_df,
     mode=mode,
 )
 st.pydeck_chart(deck, use_container_width=True)
 
-# ─── 3. 전체 지역 상세 데이터 (마지막) ───────────────────────
+# ─── 3. 재배치존 선정 결과 테이블 ────────────────────────────
+if selected_zones_df is not None and not selected_zones_df.empty:
+    st.divider()
+    st.subheader("재배치존 선정 결과")
+
+    selected_only = selected_zones_df[selected_zones_df["selected"]].copy()
+    n_selected = len(selected_only)
+    n_total = len(selected_zones_df)
+    st.success(
+        f"총 {n_total}개 재배치존 중 **{n_selected}개** 선정 "
+        f"(존당 10대 × {n_selected}개 = {n_selected * 10}대)"
+    )
+
+    zone_display_cols = [
+        "h3_district_name", "zone_title", "demand_score", "allocated", "selected",
+    ]
+    zone_labels = {
+        "h3_district_name": "District",
+        "zone_title": "재배치존",
+        "demand_score": "수요 점수",
+        "allocated": "배치 대수",
+        "selected": "선정",
+    }
+    existing_zone_cols = [c for c in zone_display_cols if c in selected_zones_df.columns]
+    zone_display = selected_zones_df[existing_zone_cols].rename(columns=zone_labels)
+    st.dataframe(zone_display, use_container_width=True, hide_index=True)
+
+    zone_csv = zone_display.to_csv(index=False).encode("utf-8-sig")
+    st.download_button(
+        label="재배치존 선정 결과 CSV 다운로드",
+        data=zone_csv,
+        file_name="selected_rebalance_zones.csv",
+        mime="text/csv",
+    )
+
+# ─── 4. 전체 지역 상세 데이터 (마지막) ───────────────────────
 st.divider()
 st.subheader("전체 지역 상세 데이터")
 

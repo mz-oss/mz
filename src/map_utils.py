@@ -153,6 +153,7 @@ def create_allocation_map(
     polygons_df: pd.DataFrame,
     result: pd.DataFrame,
     rebalance_zones_df: pd.DataFrame | None = None,
+    selected_zones_df: pd.DataFrame | None = None,
     mode: str = "deploy",
 ) -> pdk.Deck:
     """배치/수거 할당 결과와 Rebalance Zone을 함께 표시하는 지도를 생성합니다.
@@ -162,6 +163,7 @@ def create_allocation_map(
         polygons_df: District 폴리곤 데이터
         result: allocate_bikes 결과 (allocated 컬럼 포함)
         rebalance_zones_df: Rebalance Zone 데이터 (location 컬럼 포함)
+        selected_zones_df: select_rebalance_zones 결과 (selected 컬럼 포함)
         mode: 'deploy' 또는 'collect'
     """
     if df.empty:
@@ -287,15 +289,71 @@ def create_allocation_map(
             background_padding=[4, 2],
         ))
 
-    # Rebalance Zone 레이어 (파란색 마커) — 할당된 District 내 위치하는 것만 표시
-    if rebalance_zones_df is not None and not rebalance_zones_df.empty:
+    # Rebalance Zone 레이어 — selected_zones_df가 있으면 선정/미선정 구분 표시
+    if selected_zones_df is not None and not selected_zones_df.empty:
+        icon_data = {
+            "url": "https://raw.githubusercontent.com/visgl/deck.gl-data/master/website/icon-atlas.png",
+            "width": 128,
+            "height": 128,
+            "anchorY": 128,
+            "mask": True,
+        }
+        selected_data = []
+        unselected_data = []
+        for _, rz in selected_zones_df.iterrows():
+            d = {
+                "lat": rz["lat"],
+                "lng": rz["lng"],
+                "title": rz.get("zone_title", ""),
+                "district": rz.get("h3_district_name", ""),
+                "bike_count": "",
+                "accessibility": "",
+                "gap_int": "",
+                "status": "",
+                "alloc_text": (
+                    f"수요점수: {rz.get('demand_score', 0):,} | "
+                    f"배치: {rz.get('allocated', 0)}대"
+                    if rz.get("selected")
+                    else f"수요점수: {rz.get('demand_score', 0):,} | 미선정"
+                ),
+                "icon_data": icon_data,
+            }
+            if rz.get("selected"):
+                selected_data.append(d)
+            else:
+                unselected_data.append(d)
+
+        # 미선정 Zone (회색, 작은 마커)
+        if unselected_data:
+            layers.append(pdk.Layer(
+                "IconLayer",
+                data=unselected_data,
+                get_icon="icon_data",
+                get_position=["lng", "lat"],
+                get_size=25,
+                get_color=[160, 160, 160, 140],
+                pickable=True,
+                size_scale=1,
+            ))
+        # 선정 Zone (파란색, 큰 마커)
+        if selected_data:
+            layers.append(pdk.Layer(
+                "IconLayer",
+                data=selected_data,
+                get_icon="icon_data",
+                get_position=["lng", "lat"],
+                get_size=40,
+                get_color=[30, 100, 230, 220],
+                pickable=True,
+                size_scale=1,
+            ))
+    elif rebalance_zones_df is not None and not rebalance_zones_df.empty:
+        # selected_zones_df가 없으면 기존 방식 (모든 Zone 파란색)
         rz_data = _parse_rebalance_zones(rebalance_zones_df)
         if rz_data:
-            # 할당된 District 폴리곤 수집
             alloc_polygons = [
                 d["polygon"] for d in poly_data if d["allocated"] > 0
             ]
-            # 할당 District 내에 위치하는 Rebalance Zone만 필터링
             if alloc_polygons:
                 rz_data = [
                     rz for rz in rz_data
@@ -306,7 +364,6 @@ def create_allocation_map(
                 ]
             else:
                 rz_data = []
-
         if rz_data:
             icon_data = {
                 "url": "https://raw.githubusercontent.com/visgl/deck.gl-data/master/website/icon-atlas.png",
@@ -323,7 +380,7 @@ def create_allocation_map(
                 get_icon="icon_data",
                 get_position=["lng", "lat"],
                 get_size=40,
-                get_color=[30, 100, 230, 220],  # 파란색
+                get_color=[30, 100, 230, 220],
                 pickable=True,
                 size_scale=1,
             ))
