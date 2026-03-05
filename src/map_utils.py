@@ -298,13 +298,6 @@ def create_allocation_map(
 
     # Rebalance Zone 레이어 — selected_zones_df가 있으면 선정/미선정 구분 표시
     if selected_zones_df is not None and not selected_zones_df.empty:
-        icon_data = {
-            "url": "https://raw.githubusercontent.com/visgl/deck.gl-data/master/website/icon-atlas.png",
-            "width": 128,
-            "height": 128,
-            "anchorY": 128,
-            "mask": True,
-        }
         selected_data = []
         unselected_data = []
         for _, rz in selected_zones_df.iterrows():
@@ -326,36 +319,37 @@ def create_allocation_map(
                 "lat": rz["lat"],
                 "lng": rz["lng"],
                 "info": "<br/>".join(info_parts),
-                "icon_data": icon_data,
             }
             if is_selected:
                 selected_data.append(d)
             else:
                 unselected_data.append(d)
 
-        # 미선정 Zone (회색, 작은 마커)
+        # 미선정 Zone (회색, 작은 원형 마커)
         if unselected_data:
             layers.append(pdk.Layer(
-                "IconLayer",
+                "ScatterplotLayer",
                 data=unselected_data,
-                get_icon="icon_data",
                 get_position=["lng", "lat"],
-                get_size=25,
-                get_color=[160, 160, 160, 140],
+                get_radius=40,
+                get_fill_color=[160, 160, 160, 180],
+                get_line_color=[100, 100, 100, 200],
+                line_width_min_pixels=1,
+                stroked=True,
                 pickable=True,
-                size_scale=1,
             ))
-        # 선정 Zone (파란색, 큰 마커)
+        # 선정 Zone (파란색, 큰 원형 마커)
         if selected_data:
             layers.append(pdk.Layer(
-                "IconLayer",
+                "ScatterplotLayer",
                 data=selected_data,
-                get_icon="icon_data",
                 get_position=["lng", "lat"],
-                get_size=40,
-                get_color=[30, 100, 230, 220],
+                get_radius=60,
+                get_fill_color=[30, 100, 230, 220],
+                get_line_color=[20, 60, 160, 255],
+                line_width_min_pixels=2,
+                stroked=True,
                 pickable=True,
-                size_scale=1,
             ))
     elif rebalance_zones_df is not None and not rebalance_zones_df.empty:
         # selected_zones_df가 없으면 기존 방식 (모든 Zone 파란색)
@@ -375,24 +369,16 @@ def create_allocation_map(
             else:
                 rz_data = []
         if rz_data:
-            icon_data = {
-                "url": "https://raw.githubusercontent.com/visgl/deck.gl-data/master/website/icon-atlas.png",
-                "width": 128,
-                "height": 128,
-                "anchorY": 128,
-                "mask": True,
-            }
-            for d in rz_data:
-                d["icon_data"] = icon_data
             layers.append(pdk.Layer(
-                "IconLayer",
+                "ScatterplotLayer",
                 data=rz_data,
-                get_icon="icon_data",
                 get_position=["lng", "lat"],
-                get_size=40,
-                get_color=[30, 100, 230, 220],
+                get_radius=60,
+                get_fill_color=[30, 100, 230, 220],
+                get_line_color=[20, 60, 160, 255],
+                line_width_min_pixels=2,
+                stroked=True,
                 pickable=True,
-                size_scale=1,
             ))
 
     view_state = pdk.ViewState(
