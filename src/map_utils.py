@@ -223,20 +223,27 @@ def create_allocation_map(
 
         mode_label = "배치" if mode == "deploy" else "수거"
         acc_val = row.get("avg_accessibility", 0)
-        acc_str = f"{acc_val:.1%}" if not pd.isna(acc_val) else "N/A"
-        alloc_text = f"<b>{mode_label} 할당: {allocated}대</b>" if allocated > 0 else ""
+        acc_str = f"{acc_val:.1%}" if not pd.isna(acc_val) else ""
+        bike_count_val = round(row.get("avg_bike_count", 0), 1)
+        gap_int_val = row.get("gap_int", 0)
+        status_val = row.get("status", "")
+
+        # 동적 툴팁 구성 (값이 있는 항목만 표시)
+        info_parts = [f"<b>{district_name}</b>"]
+        if bike_count_val:
+            info_parts.append(f"배치 기기: {bike_count_val}대")
+        if acc_str:
+            info_parts.append(f"공급성공률: {acc_str}")
+        if gap_int_val:
+            info_parts.append(f"부족/과잉: <b>{gap_int_val}대</b> {status_val}")
+        if allocated > 0:
+            info_parts.append(f"<b>{mode_label} 할당: {allocated}대</b>")
+        info_html = "<br/>".join(info_parts)
 
         poly_data.append({
             "polygon": polygon_coords,
-            "district": district_name,
-            "title": "",
-            "bike_count": round(row.get("avg_bike_count", 0), 1),
-            "accessibility": acc_str,
-            "gap": gap,
-            "gap_int": row.get("gap_int", 0),
-            "status": row.get("status", ""),
+            "info": info_html,
             "allocated": allocated,
-            "alloc_text": alloc_text,
             "color": color,
             "lat": center_lat,
             "lng": center_lng,
@@ -301,24 +308,27 @@ def create_allocation_map(
         selected_data = []
         unselected_data = []
         for _, rz in selected_zones_df.iterrows():
+            zone_title = rz.get("zone_title", "")
+            district = rz.get("h3_district_name", "")
+            demand_score = rz.get("demand_score", 0)
+            is_selected = rz.get("selected")
+
+            info_parts = [f"<b>{zone_title}</b>"]
+            if district:
+                info_parts.append(f"District: {district}")
+            info_parts.append(f"수요점수: {demand_score:,}")
+            if is_selected:
+                info_parts.append(f"배치: {int(rz.get('allocated', 0))}대")
+            else:
+                info_parts.append("미선정")
+
             d = {
                 "lat": rz["lat"],
                 "lng": rz["lng"],
-                "title": rz.get("zone_title", ""),
-                "district": rz.get("h3_district_name", ""),
-                "bike_count": "",
-                "accessibility": "",
-                "gap_int": "",
-                "status": "",
-                "alloc_text": (
-                    f"수요점수: {rz.get('demand_score', 0):,} | "
-                    f"배치: {rz.get('allocated', 0)}대"
-                    if rz.get("selected")
-                    else f"수요점수: {rz.get('demand_score', 0):,} | 미선정"
-                ),
+                "info": "<br/>".join(info_parts),
                 "icon_data": icon_data,
             }
-            if rz.get("selected"):
+            if is_selected:
                 selected_data.append(d)
             else:
                 unselected_data.append(d)
@@ -385,7 +395,6 @@ def create_allocation_map(
                 size_scale=1,
             ))
 
-    mode_label = "배치" if mode == "deploy" else "수거"
     view_state = pdk.ViewState(
         latitude=avg_lat,
         longitude=avg_lng,
@@ -397,13 +406,7 @@ def create_allocation_map(
         layers=layers,
         initial_view_state=view_state,
         tooltip={
-            "html": (
-                "<b>{district}{title}</b><br/>"
-                "배치 기기: {bike_count}대<br/>"
-                "공급성공률: {accessibility}<br/>"
-                "부족/과잉: <b>{gap_int}대</b> {status}<br/>"
-                "{alloc_text}"
-            ),
+            "html": "{info}",
             "style": {"backgroundColor": "#333", "color": "white"},
         },
     )
@@ -452,18 +455,15 @@ def _parse_rebalance_zones(rz_df: pd.DataFrame) -> list[dict]:
         except (json.JSONDecodeError, KeyError, IndexError, TypeError, ValueError):
             continue
 
+        title = row.get("title", "")
+        weight = row.get("weight", 0)
+        info_parts = [f"<b>{title}</b>"]
+        if weight:
+            info_parts.append(f"가중치: {weight}")
         rz_data.append({
             "lat": lat,
             "lng": lng,
-            "title": row.get("title", ""),
-            "weight": row.get("weight", 0),
-            "note": row.get("note", ""),
-            "district": "",
-            "bike_count": "",
-            "accessibility": "",
-            "gap_int": "",
-            "status": "",
-            "alloc_text": f"Rebalance Zone (가중치: {row.get('weight', 0)})",
+            "info": "<br/>".join(info_parts),
         })
     return rz_data
 

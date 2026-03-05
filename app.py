@@ -104,13 +104,25 @@ df = calculate_supply_gap(raw_df, target_rate=TARGET_RATE)
 mode = "deploy" if "배치" in alloc_mode else "collect"
 mode_label = "배치" if mode == "deploy" else "수거"
 
-# ─── 1. 배치/수거 할당 결과 (최우선 노출) ─────────────────────
-st.subheader(f"{mode_label} 할당 결과")
-
+# ─── 데이터 준비: 할당 + 재배치존 선정 ─────────────────────────
 result, adjusted_rate = allocate_bikes(
     df, total_bikes_input, mode=mode,
     raw_df=raw_df, initial_target_rate=TARGET_RATE,
 )
+
+polygons_df = fetch_district_polygons()
+rebalance_zones_df = fetch_rebalance_zones() if mode == "deploy" else None
+selected_zones_df = None
+
+if mode == "deploy" and not result.empty and rebalance_zones_df is not None:
+    hex_demand_df = fetch_hex_demand()
+    if not hex_demand_df.empty:
+        selected_zones_df = select_rebalance_zones(
+            result, rebalance_zones_df, hex_demand_df, polygons_df,
+        )
+
+# ─── 1. 배치/수거 할당 결과 (최우선 노출) ─────────────────────
+st.subheader(f"{mode_label} 할당 결과")
 
 if result.empty:
     st.info(f"{mode_label}이 필요한 지역이 없습니다.")
@@ -126,28 +138,43 @@ else:
             f"{TARGET_RATE:.0%} → **{adjusted_rate:.0%}**로 자동 조정했습니다."
         )
 
-    alloc_display_cols = [
-        "alloc_priority", "h3_district_name", "allocated", "gap_int",
-        "avg_bike_count", "current_bike_count", "avg_accessibility", "h3_area_name", "area_group",
-    ]
-    alloc_labels = {
+    # District별 선정 재배치존 이름/대수 집계 (배치 모드에서만)
+    alloc_with_zones = result.copy()
+    if selected_zones_df is not None and not selected_zones_df.empty:
+        selected_only = selected_zones_df[selected_zones_df["selected"]].copy()
+        zone_summary = (
+            selected_only
+            .groupby("h3_district_name")
+            .apply(
+                lambda g: " / ".join(
+                    f"{r['zone_title']}({int(r['allocated'])}대)"
+                    for _, r in g.iterrows()
+                ),
+                include_groups=False,
+            )
+            .reset_index()
+        )
+        zone_summary.columns = ["h3_district_name", "재배치존"]
+        alloc_with_zones = alloc_with_zones.merge(
+            zone_summary, on="h3_district_name", how="left",
+        )
+        alloc_with_zones["재배치존"] = alloc_with_zones["재배치존"].fillna("")
+
+    # 핵심 정보: District / 할당 대수 / 재배치존
+    alloc_main_cols = ["alloc_priority", "h3_district_name", "allocated"]
+    alloc_main_labels = {
         "alloc_priority": "할당 순위",
-        "area_group": "Area Group",
-        "h3_area_name": "Area",
         "h3_district_name": "District",
-        "avg_bike_count": "평균 기기수(7일)",
-        "current_bike_count": "현재 기기수",
-        "avg_accessibility": "공급성공률",
-        "gap_int": f"{'부족' if mode == 'deploy' else '과잉'} 대수",
         "allocated": f"{mode_label} 할당 대수",
     }
+    if "재배치존" in alloc_with_zones.columns:
+        alloc_main_cols.append("재배치존")
 
-    existing_alloc_cols = [c for c in alloc_display_cols if c in result.columns]
-    alloc_df = result[existing_alloc_cols].rename(columns=alloc_labels)
+    existing_main_cols = [c for c in alloc_main_cols if c in alloc_with_zones.columns]
+    alloc_main_df = alloc_with_zones[existing_main_cols].rename(columns=alloc_main_labels)
+    st.dataframe(alloc_main_df, use_container_width=True, hide_index=True)
 
-    st.dataframe(alloc_df, use_container_width=True, hide_index=True)
-
-    alloc_csv = alloc_df.to_csv(index=False).encode("utf-8-sig")
+    alloc_csv = alloc_main_df.to_csv(index=False).encode("utf-8-sig")
     st.download_button(
         label=f"{mode_label} 할당 결과 CSV 다운로드",
         data=alloc_csv,
@@ -155,38 +182,7 @@ else:
         mime="text/csv",
     )
 
-# ─── 2. 재배치존 선정 + 지도 ─────────────────────────────────
-st.divider()
-st.subheader(f"{mode_label} 대상 지역 지도")
-
-polygons_df = fetch_district_polygons()
-rebalance_zones_df = fetch_rebalance_zones() if mode == "deploy" else None
-selected_zones_df = None
-
-if mode == "deploy" and not result.empty and rebalance_zones_df is not None:
-    hex_demand_df = fetch_hex_demand()
-    if not hex_demand_df.empty:
-        selected_zones_df = select_rebalance_zones(
-            result, rebalance_zones_df, hex_demand_df, polygons_df,
-        )
-
-if mode == "deploy":
-    st.caption(
-        f"빨간색 = {mode_label} 할당 지역 (할당 대수 표시) | "
-        f"회색 = 기타 지역 | 파란색 마커 = 선정 Zone | 회색 마커 = 미선정 Zone"
-    )
-else:
-    st.caption(f"빨간색 = {mode_label} 할당 지역 (할당 대수 표시) | 회색 = 기타 지역")
-
-deck = create_allocation_map(
-    df, polygons_df, result,
-    rebalance_zones_df=rebalance_zones_df,
-    selected_zones_df=selected_zones_df,
-    mode=mode,
-)
-st.pydeck_chart(deck, use_container_width=True, height=500)
-
-# ─── 3. 재배치존 선정 결과 테이블 ────────────────────────────
+# ─── 2. 재배치존 선정 결과 (선정된 존 상단 노출) ─────────────
 if selected_zones_df is not None and not selected_zones_df.empty:
     st.divider()
     st.subheader("재배치존 선정 결과")
@@ -221,7 +217,50 @@ if selected_zones_df is not None and not selected_zones_df.empty:
         mime="text/csv",
     )
 
-# ─── 4. 전체 지역 상세 데이터 (마지막) ───────────────────────
+# ─── 3. 지도 ─────────────────────────────────────────────────
+st.divider()
+st.subheader(f"{mode_label} 대상 지역 지도")
+
+if mode == "deploy":
+    st.caption(
+        f"빨간색 = {mode_label} 할당 지역 (할당 대수 표시) | "
+        f"회색 = 기타 지역 | 파란색 마커 = 선정 Zone | 회색 마커 = 미선정 Zone"
+    )
+else:
+    st.caption(f"빨간색 = {mode_label} 할당 지역 (할당 대수 표시) | 회색 = 기타 지역")
+
+deck = create_allocation_map(
+    df, polygons_df, result,
+    rebalance_zones_df=rebalance_zones_df,
+    selected_zones_df=selected_zones_df,
+    mode=mode,
+)
+st.pydeck_chart(deck, use_container_width=True, height=500)
+
+# ─── 4. 할당 근거 상세 데이터 ────────────────────────────────
+if not result.empty:
+    st.divider()
+    with st.expander("할당 근거 상세 데이터", expanded=False):
+        alloc_detail_cols = [
+            "alloc_priority", "h3_district_name", "allocated", "gap_int",
+            "avg_bike_count", "current_bike_count", "avg_accessibility", "h3_area_name", "area_group",
+        ]
+        alloc_detail_labels = {
+            "alloc_priority": "할당 순위",
+            "area_group": "Area Group",
+            "h3_area_name": "Area",
+            "h3_district_name": "District",
+            "avg_bike_count": "평균 기기수(7일)",
+            "current_bike_count": "현재 기기수",
+            "avg_accessibility": "공급성공률",
+            "gap_int": f"{'부족' if mode == 'deploy' else '과잉'} 대수",
+            "allocated": f"{mode_label} 할당 대수",
+        }
+        existing_detail_cols = [c for c in alloc_detail_cols if c in result.columns]
+        alloc_detail_df = result[existing_detail_cols].rename(columns=alloc_detail_labels)
+        st.dataframe(alloc_detail_df, use_container_width=True, hide_index=True)
+
+# ─── 5. 전체 지역 상세 데이터 (마지막) ───────────────────────
 st.divider()
 st.subheader("전체 지역 상세 데이터")
 
