@@ -138,27 +138,30 @@ else:
             f"{TARGET_RATE:.0%} → **{adjusted_rate:.0%}**로 자동 조정했습니다."
         )
 
-    # District별 선정 재배치존 이름/대수 집계 (배치 모드에서만)
+    # District별 선정 재배치존 이름/대수 집계 + 잔여 자율배치 표시
     alloc_with_zones = result.copy()
     if selected_zones_df is not None and not selected_zones_df.empty:
         selected_only = selected_zones_df[selected_zones_df["selected"]].copy()
-        zone_summary = (
-            selected_only
-            .groupby("h3_district_name")
-            .apply(
-                lambda g: " / ".join(
-                    f"{r['zone_title']}({int(r['allocated'])}대)"
-                    for _, r in g.iterrows()
-                ),
-                include_groups=False,
+
+        # District별 존 텍스트 + 잔여 계산
+        zone_texts = {}
+        for dist_name, grp in selected_only.groupby("h3_district_name"):
+            parts = [
+                f"{r['zone_title']}({int(r['allocated'])}대)"
+                for _, r in grp.iterrows()
+            ]
+            zone_total = int(grp["allocated"].sum())
+            dist_allocated = int(
+                alloc_with_zones.loc[
+                    alloc_with_zones["h3_district_name"] == dist_name, "allocated"
+                ].iloc[0]
             )
-            .reset_index()
-        )
-        zone_summary.columns = ["h3_district_name", "재배치존"]
-        alloc_with_zones = alloc_with_zones.merge(
-            zone_summary, on="h3_district_name", how="left",
-        )
-        alloc_with_zones["재배치존"] = alloc_with_zones["재배치존"].fillna("")
+            remainder = dist_allocated - zone_total
+            if remainder > 0:
+                parts.append(f"잔여{remainder}대 자율배치 필요")
+            zone_texts[dist_name] = " / ".join(parts)
+
+        alloc_with_zones["재배치존"] = alloc_with_zones["h3_district_name"].map(zone_texts).fillna("")
 
     # 핵심 정보: District / 할당 대수 / 재배치존
     alloc_main_cols = ["alloc_priority", "h3_district_name", "allocated"]
@@ -182,42 +185,7 @@ else:
         mime="text/csv",
     )
 
-# ─── 2. 재배치존 선정 결과 (선정된 존 상단 노출) ─────────────
-if selected_zones_df is not None and not selected_zones_df.empty:
-    st.divider()
-    st.subheader("재배치존 선정 결과")
-
-    selected_only = selected_zones_df[selected_zones_df["selected"]].copy()
-    n_selected = len(selected_only)
-    n_total = len(selected_zones_df)
-    st.success(
-        f"총 {n_total}개 재배치존 중 **{n_selected}개** 선정 "
-        f"(존당 10대 × {n_selected}개 = {n_selected * 10}대)"
-    )
-
-    zone_display_cols = [
-        "h3_district_name", "zone_title", "demand_score", "allocated", "selected",
-    ]
-    zone_labels = {
-        "h3_district_name": "District",
-        "zone_title": "재배치존",
-        "demand_score": "수요 점수",
-        "allocated": "배치 대수",
-        "selected": "선정",
-    }
-    existing_zone_cols = [c for c in zone_display_cols if c in selected_zones_df.columns]
-    zone_display = selected_zones_df[existing_zone_cols].rename(columns=zone_labels)
-    st.dataframe(zone_display, use_container_width=True, hide_index=True)
-
-    zone_csv = zone_display.to_csv(index=False).encode("utf-8-sig")
-    st.download_button(
-        label="재배치존 선정 결과 CSV 다운로드",
-        data=zone_csv,
-        file_name="selected_rebalance_zones.csv",
-        mime="text/csv",
-    )
-
-# ─── 3. 지도 ─────────────────────────────────────────────────
+# ─── 2. 지도 ─────────────────────────────────────────────────
 st.divider()
 st.subheader(f"{mode_label} 대상 지역 지도")
 
@@ -237,7 +205,7 @@ deck = create_allocation_map(
 )
 st.pydeck_chart(deck, use_container_width=True, height=500)
 
-# ─── 4. 할당 근거 상세 데이터 ────────────────────────────────
+# ─── 3. 할당 근거 상세 데이터 ────────────────────────────────
 if not result.empty:
     st.divider()
     with st.expander("할당 근거 상세 데이터", expanded=False):
@@ -260,7 +228,7 @@ if not result.empty:
         alloc_detail_df = result[existing_detail_cols].rename(columns=alloc_detail_labels)
         st.dataframe(alloc_detail_df, use_container_width=True, hide_index=True)
 
-# ─── 5. 전체 지역 상세 데이터 (마지막) ───────────────────────
+# ─── 4. 전체 지역 상세 데이터 (마지막) ───────────────────────
 st.divider()
 with st.expander("전체 지역 상세 데이터", expanded=False):
     kpis = get_summary_kpis(df)
