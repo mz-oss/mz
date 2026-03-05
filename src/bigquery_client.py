@@ -94,7 +94,6 @@ def fetch_area_list() -> list[str]:
     SELECT DISTINCT h3_area_name
     FROM `elecle-9be54.management.daily_bike_accessibility_by_district`
     WHERE date >= DATE_SUB(CURRENT_DATE(), INTERVAL 14 DAY)
-      AND is_operating = TRUE
       AND h3_area_name IS NOT NULL
     ORDER BY h3_area_name
     """
