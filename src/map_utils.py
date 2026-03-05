@@ -29,9 +29,16 @@ def _gap_to_color(gap: float, max_abs_gap: float) -> list[int]:
 
 
 def create_district_map(
-    df: pd.DataFrame, polygons_df: pd.DataFrame
+    df: pd.DataFrame,
+    polygons_df: pd.DataFrame,
+    highlight_districts: set[str] | None = None,
 ) -> pdk.Deck:
-    """District 폴리곤 기반 지도를 생성합니다."""
+    """District 폴리곤 기반 지도를 생성합니다.
+
+    Args:
+        highlight_districts: 빨간색으로 강조할 district 이름 집합.
+            지정하면 해당 district만 빨간색, 나머지는 회색으로 표시.
+    """
     if df.empty:
         return _empty_map()
 
@@ -61,7 +68,15 @@ def create_district_map(
             continue
 
         gap = row.get("gap", 0)
-        color = _gap_to_color(gap, max_abs_gap)
+        district_name = row.get("h3_district_name", "")
+
+        if highlight_districts is not None:
+            if district_name in highlight_districts:
+                color = [220, 40, 40, 200]  # 빨간색
+            else:
+                color = [200, 200, 200, 80]  # 회색
+        else:
+            color = _gap_to_color(gap, max_abs_gap)
 
         # 중심 좌표 계산
         lngs = [c[0] for c in polygon_coords]
